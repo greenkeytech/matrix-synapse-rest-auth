@@ -23,8 +23,11 @@ import logging
 from twisted.internet import defer
 import requests
 import json
+import os
 
 logger = logging.getLogger(__name__)
+
+should_verify = os.getenv('SSL_VERIFY', False)
 
 class RestAuthProvider(object):
 
@@ -37,7 +40,7 @@ class RestAuthProvider(object):
         self.endpoint = config.endpoint
         self.regLower = config.regLower
         self.config = config
-        
+
         logger.info('Endpoint: %s', self.endpoint)
         logger.info('Enforce lowercase username during registration: %s', self.regLower)
 
@@ -45,7 +48,7 @@ class RestAuthProvider(object):
     def check_password(self, user_id, password):
         logger.info("Got password check for " + user_id)
         data = {'user':{'id':user_id, 'password':password}}
-        r = requests.post(self.endpoint + '/_matrix-internal/identity/v1/check_credentials', json = data)
+        r = requests.post(self.endpoint + '/_matrix-internal/identity/v1/check_credentials', json = data, verify=should_verify)
         r.raise_for_status()
         r = r.json()
         if not r["auth"]:
@@ -64,11 +67,11 @@ class RestAuthProvider(object):
         registration = False
         if not (yield self.account_handler.check_user_exists(user_id)):
             logger.info("User %s does not exist yet, creating...", user_id)
-            
+
             if localpart != localpart.lower() and self.regLower:
                 logger.info('User %s was cannot be created due to username lowercase policy', localpart)
                 defer.returnValue(False)
-            
+
             user_id, access_token = (yield self.account_handler.register(localpart=localpart))
             registration = True
             logger.info("Registration based on REST data was successful for %s", user_id)
@@ -86,7 +89,7 @@ class RestAuthProvider(object):
                 yield store.set_profile_displayname(localpart, display_name)
             else:
                 logger.info("Display name was not set because it was not given or policy restricted it")
-            
+
             if "three_pids" in profile:
                 logger.info("Handling 3PIDs")
                 for threepid in profile["three_pids"]:
@@ -142,7 +145,7 @@ class RestAuthProvider(object):
         except KeyError:
             # we don't care
             pass
-        
+
         try:
             rest_config.setNameOnLogin = config['policy']['login']['profile']['name']
         except TypeError:
